@@ -1,12 +1,9 @@
-### context_recommendation
+## context_recommendation
 Contextual Recommendation Implementation for Research Purposes.
 
-1. Dataset
+### 1. Dataset
 Yelp Dataset(Version 7) can be downloaded from: https://www.kaggle.com/yelp-dataset/yelp-dataset
-Unzip the archive file and you can see:
-yelp_academic_dataset_review.json
-yelp_academic_dataset_business.json
-yelp_academic_dataset_user.json
+Unzip the archive file and you can see: yelp_academic_dataset_review.json, yelp_academic_dataset_business.jsonm, yelp_academic_dataset_user.json
 
 ``` python
 # Generate Pretraining/Train/Test Examples:
@@ -17,14 +14,14 @@ python contextual_dataset_yelp.py
 # test:     ../data/yelp/yelp-dataset/test/yelp_test_examples_*.pkl     * is the 1-2
 ```
 
-2. Pretraining using MACDAE model on Yelp Dataset
-```python
+### 2. Pretraining using MACDAE model on Yelp Dataset
+``` python
 # Pretrain the recommendation model using multi-heads number as 4
 python contextual_macdae_yelp.py 4
 ```
 
-3. Training Recommendation model
-```python
+### 3. Training Recommendation model
+``` python
 # BASE: Wide&Deep
 python recommd_context_pretrain_yelp.py base train
 
@@ -32,7 +29,7 @@ python recommd_context_pretrain_yelp.py base train
 python recommd_context_pretrain_yelp.py macdae train
 ```
 
-4. Evaluation
-```python
+### 4. Evaluating Recommendation model
+``` python
 python recommd_context_pretrain_yelp.py macdae test
 ```
