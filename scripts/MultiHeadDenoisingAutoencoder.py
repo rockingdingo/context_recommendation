@@ -211,7 +211,7 @@ class RecommendMultiHeadMaskDenoisingAutoencoder(object):
         return reconstruction, hidden_merge, network_weights
     
     def transform(self, param):
-        """ 得到隐层
+        """ get the hidden merge layer
         """
         user_id = param['user_id']
         item_id = param['item_id']
