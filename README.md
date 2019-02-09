@@ -32,11 +32,11 @@ python recommd_context_pretrain_yelp.py macdae train
 ### 4. Evaluating Recommendation model
 ``` python
 ## BASE(Wide & Deep), input x dimension (339)
-# Example Test Run Result: NDCG@5 is 0.3827, NDCG@10 is 0.434845
+# Example Test Run Result: NDCG@5 is 0.3827, NDCG@10 is 0.4348
 
 python recommd_context_pretrain_yelp.py base test
 
-## BASE(Wide & Deep) + MACDAE， input(403)
+## BASE(Wide & Deep) + MACDAE， input x dimension (403)
 # Example Test Run Result: NDCG@5 is 0.4382, NDCG@10 is 0.4854
 
 python recommd_context_pretrain_yelp.py macdae test
