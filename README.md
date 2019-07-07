@@ -2,8 +2,13 @@
 Contextual Recommendation Implementation for Research Purposes.
 
 ### 1. Dataset
-Yelp Dataset(Version 7) can be downloaded from: https://www.kaggle.com/yelp-dataset/yelp-dataset
+Yelp Dataset(The experiment in paper is conducted on Version 7).
+Latest dataset (version 9) can be downloaded from: https://www.kaggle.com/yelp-dataset/yelp-dataset
+
 Unzip the archive file and you can see: yelp_academic_dataset_review.json, yelp_academic_dataset_business.jsonm, yelp_academic_dataset_user.json
+
+Yelp Dataset(version 7) is no longer on the kaggle website. You can download dataset (version 7) of the paper's experiment and pretrain/train/test .pkl pickle files from the cloud link as below: 
+Link: https://pan.baidu.com/s/1EUm05wn88bDru-LTxuCETw, Password:f1ej
 
 ``` python
 # Generate Pretraining/Train/Test Examples:
@@ -12,6 +17,11 @@ python contextual_dataset_yelp.py
 # Pretrain: ../data/yelp/yelp-dataset/yelp_pretrain_dataset.pkl
 # train:    ../data/yelp/yelp-dataset/train/yelp_train_examples_*.pkl   * is the 1-10
 # test:     ../data/yelp/yelp-dataset/test/yelp_test_examples_*.pkl     * is the 1-2
+
+You can also download these data files(version 7) since generating dataset is time-consuming.
+Link: https://pan.baidu.com/s/1EUm05wn88bDru-LTxuCETw
+Password:f1ej
+
 ```
 
 ### 2. Pretraining using MACDAE model on Yelp Dataset

@@ -12,14 +12,20 @@ import codecs
 import re, io
 import json
 
-import cPickle as pickle
+try:
+    # Python3
+    import _pickle as pickle
+except ImportError:
+    # Python2
+    import cPickle as pickle
+
 import gc
 from collections import Counter
 
 # pylint: disable=wrong-import-order
-from absl import app as absl_app
-from absl import flags
-from six.moves import urllib
+# from absl import app as absl_app
+# from absl import flags
+# from six.moves import urllib
 import tensorflow as tf
 import numpy as np
 
@@ -96,6 +102,7 @@ def parse_business_feature(business_obj, sparse_id_dict):
     """ business feature extractor
         sparse_id_dict: contains category_id_dict and K,V sparse features
         K: business_id + cateogories + sparse_features, V: index
+        Dataset Version: Yelp Dataset removes 'neighborhood' key
     """
     DEFAULT_INDEX = 0
     business_id = business_obj['business_id']
@@ -104,13 +111,13 @@ def parse_business_feature(business_obj, sparse_id_dict):
     sparse_kv_features = []
 
     attributes = business_obj['attributes']
-    state = business_obj['state']
-    city = business_obj['city']
-    hours = business_obj['hours']
-    is_open = business_obj['is_open']
-    latitude = business_obj['latitude']
-    longitude = business_obj['longitude']
-    neighborhood = business_obj['neighborhood']
+    state = business_obj['state'] if 'state' in business_obj else None
+    city = business_obj['city'] if 'city' in business_obj else None
+    hours = business_obj['hours'] if 'hours' in business_obj else None
+    is_open = business_obj['is_open'] if 'is_open' in business_obj else None
+    # latitude = business_obj['latitude']
+    # longitude = business_obj['longitude']
+    neighborhood = business_obj['neighborhood'] if 'neighborhood' in business_obj else None
 
     if state is not None:
         sparse_kv_features.append("state_" + state)
@@ -164,11 +171,16 @@ def get_sparse_kv_feature(feature_name, feature_values):
     for value in feature_values:
         try:
             feature_kv.append(feature_name + "_" + str(value))
-        except Exception, e:
+        except Exception as e:
             print (e)
     return feature_kv
 
-def get_attributes_kv_feature(attributes_dict):
+def get_attributes_kv_feature(attributes):
+    """ Generate the 1-level key value pair string
+        e.g. u'OutdoorSeating': u'False'  to OutdoorSeating_False
+            'BusinessParking': u"{'garage': False, 'street': False, 'validated': False, 'lot': True, 'valet': False}"
+            to BusinessParking_{'garage': False, 'street': False, 'validated': False, 'lot': True, 'valet': False}
+    """
     feature_kv_batch = []
     for attr_dict in attributes:
         feature_kv = get_kv_feature(attr_dict)
@@ -220,12 +232,13 @@ def fix_json_str(s):
         s_clean = s_clean.replace("True", '"True"')
     return s_clean
 
-def calculate_business_feature(business_obj_list):
+def generate_business_feature(business_obj_list):
     """ Iterate over business_obj_list, calculate the features of business object
+        # K: 'categories' V: Separated by separator ","
+        'neighborhood' key is removed from Yelp dataset Version 9
     """
     business_id = [b['business_id'] for b in business_obj_list]
     attributes = [b['attributes'] for b in business_obj_list]
-    # K: 'categories' V: Separated by separator ","
     categories = [b['categories'] for b in business_obj_list]
     categories_batch = []
     for cate_str in categories:
@@ -235,14 +248,14 @@ def calculate_business_feature(business_obj_list):
     categories_list = list(set(categories_batch))
 
     # Location
-    state = [b['state'] for b in business_obj_list]
-    city = [b['city'] for b in business_obj_list]
-    hours = [b['hours'] for b in business_obj_list]      # dict, monday:5:00-22:00
-    is_open = [b['is_open'] for b in business_obj_list]  
-    latitude = [b['latitude'] for b in business_obj_list]
-    longitude = [b['longitude'] for b in business_obj_list]
-    neighborhood = [b['neighborhood'] for b in business_obj_list]
-
+    state = list(set([b['state'] if 'state' in b else "" for b in business_obj_list]))
+    city = list(set([b['city'] if 'city' in b else "" for b in business_obj_list]))
+    is_open = list(set([b['is_open'] if 'is_open' in b else "" for b in business_obj_list])) 
+    # hours = [b['hours'] if 'hours' in b else "" for b in business_obj_list]      # dict, monday:5:00-22:00
+    #latitude = [b['latitude'] if 'neighborhood' in b else "" for b in business_obj_list]
+    #longitude = [b['longitude'] if 'longitude' in b else "" for b in business_obj_list]
+    #neighborhood = list(set([b['neighborhood'] if "neighborhood" in b else "" for b in business_obj_list]))
+    
     # Popularity
     review_count = [b['review_count'] for b in business_obj_list]
     stars = [b['stars'] for b in business_obj_list]
@@ -252,7 +265,6 @@ def calculate_business_feature(business_obj_list):
     print ("DEBUG: state size: %d" % len(set(state)))  # 
     print ("DEBUG: city: %d" % len(set(city)))
     print ("DEBUG: is_open: %d" % len(set(is_open)))
-    print ("DEBUG: neighborhood: %d" % len(set(neighborhood)))
     print ("DEBUG: review_count max number: %d" % max(review_count))
     print ("DEBUG: stars size: %d" % len(set(stars)))  # 
 
@@ -260,14 +272,16 @@ def calculate_business_feature(business_obj_list):
     sparse_feature_list = []
     # json
     sparse_feature_list.extend(get_attributes_kv_feature(attributes))
-    sparse_feature_list.extend(get_sparse_kv_feature("state", list(set(state))))
-    sparse_feature_list.extend(get_sparse_kv_feature("city", list(set(city))))
-    sparse_feature_list.extend(get_sparse_kv_feature("is_open", list(set(is_open))))
-    sparse_feature_list.extend(get_sparse_kv_feature("neighborhood", list(set(neighborhood))))
+    sparse_feature_list.extend(get_sparse_kv_feature("state", state))
+    sparse_feature_list.extend(get_sparse_kv_feature("city", city))
+    sparse_feature_list.extend(get_sparse_kv_feature("is_open", is_open))
+    # sparse_feature_list.extend(get_sparse_kv_feature("neighborhood", list(set(neighborhood))))
 
     ## output
-    save_file(sparse_feature_list, "../data/yelp/yelp-dataset/sparse_feature_list.txt")
-    save_file(categories_list, "../data/yelp/yelp-dataset/categories_list.txt")
+    print ("DEBUG: Saving Sparse Feature List to path %s" % "../data/yelp/yelp-dataset/yelp_sparse_feature_list.txt")
+    print ("DEBUG: Saving Category Name List to path %s" % "../data/yelp/yelp-dataset/yelp_categories_list.txt") 
+    save_file(sparse_feature_list, "../data/yelp/yelp-dataset/yelp_sparse_feature_list.txt")
+    save_file(categories_list, "../data/yelp/yelp-dataset/yelp_categories_list.txt")
     return sparse_feature_list, categories_list
 
 def parse_user_feature(user_obj, user_id_dict):
@@ -398,7 +412,10 @@ def iter_file(filename, N = 1000):
              yield lines
 
 def prepare_dataset(review_obj_list, user_min_review_cnt = 20, negative_sample_ratio = 50, ratio = 0.8):
-    """ 
+    """ Prepare Business Review Dataset with 
+        minimum review count: user_min_review_cnt
+        negative sampling rate: negative_sample_ratio
+        ratio: train and test split ratio 80%/20%
     """ 
     # user_id cnt
     user_id_list_raw = [obj['user_id'] for obj in review_obj_list]
@@ -553,6 +570,15 @@ def get_business_obj_list(datafolder):
     print ("DEBUG: Finish Reading Business Data lines %d" % len(business_obj_list))
     return business_obj_list
 
+def get_user_obj_list(datafolder):
+    """ Read file yelp_academic_dataset_user.json user json object as list
+    """    
+    user_json_path = os.path.join(datafolder, "yelp_academic_dataset_user.json")
+    print ("DEBUG: Start Reading User Data from file %s" % user_json_path)
+    user_obj_list = read_json_line(user_json_path)
+    print ("DEBUG: Finish Reading User Data lines %d" % len(user_obj_list))
+    return user_obj_list
+
 def get_user_item_interaction(dataset):
     """
     """
@@ -574,112 +600,6 @@ def get_user_item_interaction(dataset):
     print ("DEBUG: Generating User Item Id Dict Size %d" % len(user_item_id_dict))
     print ("DEBUG: Generating Item User Id Dict Size %d" % len(item_user_id_dict))
     return user_item_id_dict, item_user_id_dict
-
-def prepare_dataset_from_file():
-    """ Read .json file from Yelp dataset datapath
-        review data path: ../data/yep/yelp-dataset/academic_dataset_review.json
-
-        Output File:
-            ../data/yelp/yelp-dataset/yelp_train_dataset.pkl
-            ../data/yelp/yelp-dataset/yelp_test_dataset.pkl
-            ../data/yelp/yelp-dataset/yelp_pretrain_dataset.pkl
-            ../data/yelp/yelp-dataset/train/yelp_train_examples_*.pkl  * is the split part Id: 1-10
-            ../data/yelp/yelp-dataset/test/yelp_test_examples_*.pkl    * is the split part Id
-    """
-    datafolder = "../data/yelp/yelp-dataset"
-    if_load_raw_review_dataset = True
-    if if_load_raw_review_dataset:
-        # Iterate Review Json Object
-        review_json_path = os.path.join(datafolder, "yelp_academic_dataset_review.json")
-        reviews_generator = iter_file(review_json_path, N = 10000)
-        review_obj_list = []
-        for i, lines in enumerate(reviews_generator):
-            if (i % 100 == 0):
-                print ("DEBUG: Processing Review Data Batch %d, Size %d" % (i, len(lines)))
-            try:
-                review_obj_list.extend(read_json_batch(lines))
-            except Exception, e:
-                print ("DEBUG: Processing Review Data meet error")
-                print (e)
-        ## Filter Valid Review with 4 and 5 stars as positive examples
-        review_obj_filter = filter_valid_review_obj(review_obj_list, 4)
-        print ("DEBUG: Review Object After filter list size %d" % len(review_obj_filter))
-        ## Train/Test split and negative sampling
-        dataset, train_dataset, test_dataset = prepare_dataset(review_obj_filter, user_min_review_cnt = 20, negative_sample_ratio = 50, ratio = 0.8)
-        calculate_dataset_statistics(dataset)
-        ## output train and test dataset(user/item interaction file)
-        train_dataset_path = os.path.join(datafolder, "yelp_train_dataset.pkl")
-        test_dataset_path = os.path.join(datafolder, "yelp_test_dataset.pkl")
-        with io.open(train_dataset_path, 'wb') as output_file:
-            pickle.dump(train_dataset, output_file)
-        with io.open(test_dataset_path, 'wb') as output_file:
-            pickle.dump(test_dataset, output_file)      
-        ## output user_item dictionary file
-        user_item_id_dict, item_user_id_dict = get_user_item_interaction(dataset)
-        user_item_id_dict_path = os.path.join(datafolder, "yelp_user_item_id_dict.pkl")
-        item_user_id_dict_path = os.path.join(datafolder, "yelp_item_user_id_dict.pkl")
-        with io.open(user_item_id_dict_path, 'wb') as output_file:
-            pickle.dump(user_item_id_dict, output_file)
-        with io.open(item_user_id_dict_path, 'wb') as output_file:
-            pickle.dump(item_user_id_dict, output_file)     
-
-        ## Read sparse feature id dictionary
-        # load instance of businesses and users
-        business_obj_list = get_business_obj_list(datafolder)
-        business_obj_dict = get_business_obj_dict(business_obj_list)
-        user_obj_dict = get_user_obj_dict(datafolder)
-
-        ## Generate Sparse Feature Mapping Dictionary
-        user_id_list = [uid for uid in business_obj_dict.keys()]
-        business_id_list = [bid for bid in business_obj_dict.keys()]
-        categories_list, sparse_feature_list = calculate_business_feature(business_obj_list)
-
-        # Merge sparse_feature_list, categories_list, user_id_list and business_id_list 
-        # into Sparse Feature Dict Mapping
-        sparse_id_list = []
-        sparse_id_list.extend(user_id_list)
-        sparse_id_list.extend(business_id_list)
-        sparse_id_list.extend(sparse_feature_list)
-        sparse_id_list.extend(categories_list)
-        # remove duplicate values
-        sparse_id_list = list(set(sparse_id_list))
-        sparse_id_dict = list_to_dict(sparse_id_list)
-
-        # Release Memory
-        del review_obj_list
-        del review_obj_filter
-        gc.collect()
-
-    # User Item ID Mapping
-    user_item_id_dict, item_user_id_dict = {}, {}
-    user_item_id_dict_path = os.path.join(datafolder, "yelp_user_item_id_dict.pkl")
-    item_user_id_dict_path = os.path.join(datafolder, "yelp_item_user_id_dict.pkl")
-    if os.path.exists(user_item_id_dict_path):
-        with io.open(user_item_id_dict_path, 'rb') as input_file:
-            user_item_id_dict = pickle.load(input_file)
-    if os.path.exists(item_user_id_dict_path):
-        with io.open(item_user_id_dict_path, 'rb') as input_file:
-            item_user_id_dict = pickle.load(input_file) 
-
-    ## Read train/test split dataset
-    train_dataset, test_dataset = [], []
-    train_dataset_path = os.path.join(datafolder, "yelp_train_dataset.pkl")
-    test_dataset_path = os.path.join(datafolder, "yelp_test_dataset.pkl")
-    if os.path.exists(train_dataset_path):
-        with io.open(train_dataset_path, 'rb') as input_file:
-            train_dataset = pickle.load(input_file)
-    if os.path.exists(test_dataset_path):
-        with io.open(test_dataset_path, 'rb') as input_file:
-            test_dataset = pickle.load(input_file)   
-    
-    # generate prtrain dataset
-    pretrain_dataset = generate_pretrain_examples(datafolder, train_dataset, "yelp_pretrain_dataset.pkl",
-        user_obj_dict, business_obj_dict, sparse_id_dict, user_item_id_dict, item_user_id_dict)
-    # generate training dataset
-    train_examples = generate_examples_batch(datafolder, train_dataset, "train/yelp_train_examples",
-        user_obj_dict, business_obj_dict, sparse_id_dict, user_item_id_dict, item_user_id_dict, NS = 50, save_every_num = 100000)
-    test_examples = generate_examples_batch(datafolder, test_dataset, "test/yelp_test_examples", 
-        user_obj_dict, business_obj_dict, sparse_id_dict, user_item_id_dict, item_user_id_dict, NS = 50, save_every_num = 150000)
 
 def generate_pretrain_examples(datafolder, train_dataset, dataset_name, user_obj_dict, business_obj_dict,
         sparse_id_dict, user_item_id_dict, item_user_id_dict):
@@ -986,7 +906,7 @@ def group_by_user(dataset):
         business_index = example[3]
         b_sparse_feature = example[4]
         b_dense_features = example[5]
-        if user_index <> user_id:
+        if user_index != user_id:
             user_batch_dict[user_id] = user_batch
             user_batch = []
             user_id = user_index
@@ -1068,8 +988,125 @@ class DatasetFolderIter(object):
             dataset = TrainDatasetIter(pickle_file_name, batch_size=self.batch_size)
             yield dataset
 
-def test_dataset_folder_iter():
-    train_file_folder="../../context_recommendation/data/yelp/yelp-dataset/train"
+def prepare_dataset_from_file(datafolder):
+    """ Read .json file from Yelp dataset datapath
+        review data path: ../data/yep/yelp-dataset/academic_dataset_review.json
+
+        Output File:
+            ../data/yelp/yelp-dataset/yelp_train_dataset.pkl
+            ../data/yelp/yelp-dataset/yelp_test_dataset.pkl
+            ../data/yelp/yelp-dataset/yelp_pretrain_dataset.pkl
+            ../data/yelp/yelp-dataset/train/yelp_train_examples_*.pkl  * is the split part Id: 1-10
+            ../data/yelp/yelp-dataset/test/yelp_test_examples_*.pkl    * is the split part Id
+    """
+    if_load_raw_review_dataset = True
+    if if_load_raw_review_dataset:
+        # Iterate Review Json Object
+        review_json_path = os.path.join(datafolder, "yelp_academic_dataset_review.json")
+        reviews_generator = iter_file(review_json_path, N = 10000)
+        review_obj_list = []
+        print ("DEBUG: Start Processing Business Review file %s" % "yelp_academic_dataset_review.json")
+        for i, lines in enumerate(reviews_generator):
+            if (i % 100 == 0):
+                print ("DEBUG: Processing Review Data Batch %d, Size %d" % (i, len(lines)))
+            ## DEBUG
+            if (i >= 150):
+                break
+            try:
+                review_obj_list.extend(read_json_batch(lines))
+            except Exception as e:
+                print ("DEBUG: Processing Review Data meet error")
+                print (e)
+        ## Filter Valid Review with 4 and 5 stars as positive examples
+        review_obj_filter = filter_valid_review_obj(review_obj_list, 4)
+        print ("DEBUG: Finish Review Object Filtering size %d" % len(review_obj_filter))
+        ## Train/Test split and negative sampling
+        print ("DEBUG: Start train/test splitting and negative sampling...")
+        dataset, train_dataset, test_dataset = prepare_dataset(review_obj_filter, user_min_review_cnt = 20, negative_sample_ratio = 50, ratio = 0.8)
+        calculate_dataset_statistics(dataset)
+        ## output train and test dataset(user/item interaction file)
+        train_dataset_path = os.path.join(datafolder, "yelp_train_dataset.pkl")
+        test_dataset_path = os.path.join(datafolder, "yelp_test_dataset.pkl")
+        with io.open(train_dataset_path, 'wb') as output_file:
+            pickle.dump(train_dataset, output_file)
+        with io.open(test_dataset_path, 'wb') as output_file:
+            pickle.dump(test_dataset, output_file)      
+        ## output user_item dictionary file
+        user_item_id_dict, item_user_id_dict = get_user_item_interaction(dataset)
+        user_item_id_dict_path = os.path.join(datafolder, "yelp_user_item_id_dict.pkl")
+        item_user_id_dict_path = os.path.join(datafolder, "yelp_item_user_id_dict.pkl")
+        with io.open(user_item_id_dict_path, 'wb') as output_file:
+            pickle.dump(user_item_id_dict, output_file)
+        with io.open(item_user_id_dict_path, 'wb') as output_file:
+            pickle.dump(item_user_id_dict, output_file)     
+
+        ## Read sparse feature id dictionary
+        # load instance of businesses and users
+        business_obj_list = get_business_obj_list(datafolder)
+        business_obj_dict = get_business_obj_dict(business_obj_list)
+        # user_obj_list = get_user_obj_list(datafolder)
+        user_obj_dict = get_user_obj_dict(datafolder)
+
+        ## Generate Sparse Feature Mapping Dictionary
+        print ("DEBUG: Start Generating Sparse Features Mapping...")
+        user_id_list = list(set([uid for uid in user_obj_dict.keys()]))
+        business_id_list = list(set([bid for bid in business_obj_dict.keys()]))
+        categories_list, sparse_feature_list = generate_business_feature(business_obj_list)
+        print ("DEBUG: Finish Generating Sparse Features Mapping...")
+
+        # Merge sparse_feature_list, categories_list, user_id_list and business_id_list 
+        # into Sparse Feature Dict Mapping
+        sparse_id_list = []
+        sparse_id_list.extend(user_id_list)
+        sparse_id_list.extend(business_id_list)
+        sparse_id_list.extend(sparse_feature_list)
+        sparse_id_list.extend(categories_list)
+        # remove duplicate values
+        sparse_id_list = list(set(sparse_id_list))
+        sparse_id_dict = list_to_dict(sparse_id_list)
+        print ("DEBUG: Saving Sparse Id Dict to file...")
+        sparse_id_dict_path = os.path.join(datafolder, "yelp_sparse_feature_id_dict.pkl")
+        with io.open(sparse_id_dict_path, 'wb') as sparse_output_file:
+            pickle.dump(sparse_id_dict, sparse_output_file)
+
+        # Release Memory
+        del review_obj_list
+        del review_obj_filter
+        gc.collect()
+
+    # Reload data from file
+    # User Item ID Mapping
+    user_item_id_dict, item_user_id_dict = {}, {}
+    user_item_id_dict_path = os.path.join(datafolder, "yelp_user_item_id_dict.pkl")
+    item_user_id_dict_path = os.path.join(datafolder, "yelp_item_user_id_dict.pkl")
+    if os.path.exists(user_item_id_dict_path):
+        with io.open(user_item_id_dict_path, 'rb') as input_file:
+            user_item_id_dict = pickle.load(input_file)
+    if os.path.exists(item_user_id_dict_path):
+        with io.open(item_user_id_dict_path, 'rb') as input_file:
+            item_user_id_dict = pickle.load(input_file) 
+
+    ## Read train/test split dataset
+    train_dataset, test_dataset = [], []
+    train_dataset_path = os.path.join(datafolder, "yelp_train_dataset.pkl")
+    test_dataset_path = os.path.join(datafolder, "yelp_test_dataset.pkl")
+    if os.path.exists(train_dataset_path):
+        with io.open(train_dataset_path, 'rb') as input_file:
+            train_dataset = pickle.load(input_file)
+    if os.path.exists(test_dataset_path):
+        with io.open(test_dataset_path, 'rb') as input_file:
+            test_dataset = pickle.load(input_file)   
+    
+    # generate prtrain dataset
+    pretrain_dataset = generate_pretrain_examples(datafolder, train_dataset, "yelp_pretrain_dataset.pkl",
+        user_obj_dict, business_obj_dict, sparse_id_dict, user_item_id_dict, item_user_id_dict)
+    # generate training dataset
+    train_examples = generate_examples_batch(datafolder, train_dataset, "train/yelp_train_examples",
+        user_obj_dict, business_obj_dict, sparse_id_dict, user_item_id_dict, item_user_id_dict, NS = 50, save_every_num = 100000)
+    test_examples = generate_examples_batch(datafolder, test_dataset, "test/yelp_test_examples", 
+        user_obj_dict, business_obj_dict, sparse_id_dict, user_item_id_dict, item_user_id_dict, NS = 50, save_every_num = 150000)
+
+def test_dataset_folder_iter(train_file_folder):
     train_dataset_iter = DatasetFolderIter(train_file_folder, batch_size = 256)
     for i, train_dataset in enumerate(train_dataset_iter):
         print ("DEBUG: Loading Batch size %d" % i)
@@ -1078,11 +1115,10 @@ def test_dataset_folder_iter():
             if (j % 1000 == 0):
                 print ("DEBUG: processing data_batch %d" % j)
 
-def test_pretrain_iterator():
+def test_pretrain_iterator(data_path):
     """ u_idx_batch, u_dense_feature_batch, b_idx_batch, b_cate_batch, b_sparse_feature_batch, b_dense_feature_batch
-    """    
-    datafolder="../data/yelp/yelp-dataset"
-    dataset = PretrainDatasetIter(datafolder, batch_size = 32)
+    """
+    dataset = PretrainDatasetIter(data_path, batch_size = 32)
     for i, group in enumerate(dataset):
         print (i)
         print (len(group))
@@ -1094,7 +1130,6 @@ def test_pretrain_iterator():
         b_idx_batch = group[2]
         b_sparse_feature_batch = group[3]
         b_dense_feature_batch = group[4]
-
         print ("DEBUG: User Index Batch...")
         print (u_idx_batch)
         print ("DEBUG: u_dense_feature_batch Batch...")
@@ -1108,6 +1143,12 @@ def test_pretrain_iterator():
         break
 
 if __name__ == '__main__':
-    prepare_dataset_from_file()
-    test_dataset_folder_iter()
-    test_pretrain_iterator()
+    # Yelp dataset folder
+    datafolder = "../data/yelp/yelp-dataset"
+    prepare_dataset_from_file(datafolder)
+    # Train folder
+    train_file_folder="../../context_recommendation/data/yelp/yelp-dataset/train"
+    test_dataset_folder_iter(train_file_folder)
+    # Pretrain Dataset
+    pretrain_datapath="../data/yelp/yelp-dataset/yelp_pretrain_dataset.pkl"
+    test_pretrain_iterator(pretrain_datapath)
