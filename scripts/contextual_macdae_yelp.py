@@ -173,8 +173,10 @@ def main():
     print ("DEBUG: Model Config n_head is %d" % model_config.n_head) 
     training_epochs = run_config.training_epochs
     data_path="../data/yelp/yelp-dataset/yelp_pretrain_dataset.pkl"
+    if not os.path.exists(data_path):
+        print ("DEBUG: Input Pretrain file path %s doesn't exist..." % data_path)
+        return
     dataset = PretrainDatasetIter(data_path, batch_size = run_config.batch_size)
-    
     with tf.Session() as session:
         session.run(tf.global_variables_initializer())
         
