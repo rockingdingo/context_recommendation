@@ -1009,8 +1009,6 @@ def prepare_dataset_from_file(datafolder):
         for i, lines in enumerate(reviews_generator):
             if (i % 100 == 0):
                 print ("DEBUG: Processing Review Data Batch %d, Size %d" % (i, len(lines)))
-            if (i >= 200):
-                break
             try:
                 review_obj_list.extend(read_json_batch(lines))
             except Exception as e:

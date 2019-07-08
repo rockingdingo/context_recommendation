@@ -38,6 +38,7 @@ python contextual_dataset_yelp_old.py
 python contextual_macdae_yelp.py 4
 ```
 
+
 ### 3. Training Recommendation model
 ``` python
 # BASE: Wide&Deep
