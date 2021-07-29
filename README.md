@@ -61,3 +61,9 @@ python recommd_context_pretrain_yelp.py base test
 python recommd_context_pretrain_yelp.py macdae test
 
 ```
+
+
+References:
+http://www.deepnlp.org/blog/cross-domain-recommendation-mmd-wasserstein
+http://www.deepnlp.org/blog/deep-candidate-generation
+http://www.deepnlp.org/blog/tensorflow-cpp-build-for-production
